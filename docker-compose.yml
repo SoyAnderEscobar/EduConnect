@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: educonnect-db
+    restart: always
+    environment:
+      POSTGRES_DB: educonnect
+      POSTGRES_USER: eduadmin
+      POSTGRES_PASSWORD: edu_seguro_2026
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - edunet
+
+  redis:
+    image: redis:7-alpine
+    container_name: educonnect-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - edunet
+
+volumes:
+  pgdata:
+
+networks:
+  edunet:
+    driver: bridge
