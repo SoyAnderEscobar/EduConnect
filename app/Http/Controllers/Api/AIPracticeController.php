@@ -78,8 +78,9 @@ class AIPracticeController extends Controller
             return response()->json(['message' => 'No estas inscrito en esta materia'], 403);
         }
 
-        $prompt = "Eres un profesor universitario experto. Genera un ejercicio practico para un estudiante "
-            . "basado en la siguiente actividad academica.\n\n"
+        $prompt = "Eres un profesor universitario experto. Tu objetivo es ensenar al estudiante mostrandole "
+            . "PRIMERO un ejemplo resuelto del tipo de ejercicio, y LUEGO pedirle que resuelva uno NUEVO "
+            . "y DISTINTO siguiendo el mismo razonamiento (no el mismo enunciado).\n\n"
             . "Materia: {$post->subject->name}\n"
             . "Tema: {$post->title}\n"
             . "Descripcion de la actividad: {$post->description}\n";
@@ -88,18 +89,28 @@ class AIPracticeController extends Controller
             $prompt .= "Contenido programatico: {$post->program_content}\n";
         }
 
-        $prompt .= "\nGenera el ejercicio con esta estructura:\n"
-            . "1. **Contexto**: Una breve situacion o escenario (2-3 lineas)\n"
-            . "2. **Enunciado**: El problema a resolver, claro y especifico\n"
-            . "3. **Datos proporcionados**: La informacion necesaria para resolverlo\n"
-            . "4. **Se pide**: Lista de lo que el estudiante debe entregar/calcular/responder\n"
-            . "5. **Pistas**: 1-2 pistas para orientar al estudiante sin dar la respuesta\n\n"
-            . "NO incluyas la solucion. El estudiante lo resolvera por su cuenta y podra enviar "
-            . "multiples intentos hasta llegar a la respuesta correcta.\n"
-            . "Responde en espanol.";
+        $prompt .= "\nGenera la respuesta con EXACTAMENTE esta estructura y encabezados en negrita:\n\n"
+            . "**Explicacion breve del tema**: 3-5 lineas claras que expliquen el concepto clave y el metodo "
+            . "general para resolver este tipo de ejercicios. Suficiente para que el estudiante entienda, sin extenderse de mas.\n\n"
+            . "**Ejemplo resuelto (modelo)**: Plantea un ejercicio similar al que luego pediras, e incluye la "
+            . "solucion paso a paso mostrando el razonamiento. Debe ser autocontenido y servir como guia. "
+            . "Maximo 6-8 pasos cortos.\n\n"
+            . "**Ahora te toca a ti**: Indica claramente al estudiante que debe resolver un ejercicio NUEVO "
+            . "aplicando el MISMO procedimiento del ejemplo, pero con datos/contexto diferentes (a su manera, "
+            . "con sus palabras al explicar).\n\n"
+            . "**Contexto del ejercicio**: Breve situacion o escenario (2-3 lineas), DIFERENTE al del ejemplo.\n\n"
+            . "**Enunciado**: El problema a resolver, claro y especifico.\n\n"
+            . "**Datos proporcionados**: Informacion necesaria para resolverlo.\n\n"
+            . "**Se pide**: Lista de lo que el estudiante debe entregar, calcular o responder.\n\n"
+            . "**Pistas**: 1-2 pistas que orienten sin revelar la respuesta, recordandole apoyarse en el ejemplo resuelto.\n\n"
+            . "REGLAS IMPORTANTES:\n"
+            . "- NO incluyas la solucion del ejercicio final (solo la del ejemplo modelo).\n"
+            . "- El ejercicio final debe ser DISTINTO al ejemplo (otros datos/escenario), pero resolverse con el mismo metodo.\n"
+            . "- Manten un tono didactico y motivador.\n"
+            . "- Responde en espanol y usa Markdown para los encabezados en negrita.";
 
         try {
-            $content = $this->callGemini($prompt, 1024);
+            $content = $this->callGemini($prompt, 1800);
 
             if (!$content) {
                 return response()->json(['message' => 'No se pudo generar el ejercicio. Intenta de nuevo.'], 500);

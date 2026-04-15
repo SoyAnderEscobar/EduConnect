@@ -1,42 +1,75 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { Send, Paperclip, Users, MessageCircle } from 'lucide-react';
+import { Send, Paperclip, Users, MessageCircle, ArrowLeft, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
 import { timeAgo } from '@/lib/utils';
 import api from '@/services/api';
+
+interface SubjectGroup {
+  id: string;
+  name: string;
+  members: any[];
+}
 
 export default function ChatPage() {
   const { userId: selectedUserId } = useParams();
   const { user } = useAuthStore();
   const [conversations, setConversations] = useState<any[]>([]);
-  const [contacts, setContacts] = useState<any[]>([]);
+  const [subjectGroups, setSubjectGroups] = useState<SubjectGroup[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [activeChat, setActiveChat] = useState<string | null>(selectedUserId || null);
   const [showContacts, setShowContacts] = useState(false);
+  const [collapsedSubjects, setCollapsedSubjects] = useState<Record<string, boolean>>({});
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Load conversations and contacts
+  // Load conversations and contacts grouped by subject
   useEffect(() => {
     api.get('/chat/conversations').then(({ data }) => setConversations(data.data || [])).catch(() => {});
-    // Load contacts from all subjects
     api.get('/subjects').then(async ({ data }) => {
       const subjects = data.data || [];
-      const allContacts: any[] = [];
+      const groups: SubjectGroup[] = [];
       for (const s of subjects) {
         try {
           const { data: resp } = await api.get(`/subjects/${s.id}/members`);
-          const members = resp.data || [];
-          for (const m of members) {
-            if (m.id !== user?.id && !allContacts.find((c: any) => c.id === m.id)) {
-              allContacts.push({ ...m, subjectName: s.name });
-            }
+          const members = (resp.data || []).filter((m: any) => m.id !== user?.id);
+          if (members.length > 0) {
+            groups.push({ id: s.id, name: s.name, members });
           }
         } catch {}
       }
-      setContacts(allContacts);
+      setSubjectGroups(groups);
     }).catch(() => {});
   }, [user?.id]);
+
+  // Map each user id to the subjects they share with current user (for grouping conversations)
+  const userSubjectsMap = useMemo(() => {
+    const map: Record<string, { id: string; name: string }[]> = {};
+    for (const g of subjectGroups) {
+      for (const m of g.members) {
+        if (!map[m.id]) map[m.id] = [];
+        map[m.id].push({ id: g.id, name: g.name });
+      }
+    }
+    return map;
+  }, [subjectGroups]);
+
+  // Group conversations by the first subject of each participant; unknowns go under "Otros"
+  const groupedConversations = useMemo(() => {
+    const grouped: Record<string, { name: string; items: any[] }> = {};
+    for (const conv of conversations) {
+      const subs = userSubjectsMap[conv.user.id];
+      const key = subs && subs.length > 0 ? subs[0].id : '__other';
+      const name = subs && subs.length > 0 ? subs[0].name : 'Otros';
+      if (!grouped[key]) grouped[key] = { name, items: [] };
+      grouped[key].items.push(conv);
+    }
+    return grouped;
+  }, [conversations, userSubjectsMap]);
+
+  const toggleSubject = (id: string) => {
+    setCollapsedSubjects((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   // Load messages when activeChat changes + poll every 5s
   useEffect(() => {
@@ -73,13 +106,18 @@ export default function ChatPage() {
     setShowContacts(false);
   };
 
+  const allContacts = useMemo(
+    () => subjectGroups.flatMap((g) => g.members),
+    [subjectGroups]
+  );
+
   const activeChatUser = conversations.find((c) => c.user.id === activeChat)?.user
-    || contacts.find((c: any) => c.id === activeChat);
+    || allContacts.find((c: any) => c.id === activeChat);
 
   return (
-    <div className="flex h-[calc(100vh-7rem)] bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+    <div className="flex h-[calc(100vh-7rem)] sm:h-[calc(100vh-7rem)] bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
       {/* Sidebar: Conversations + Contacts */}
-      <div className="w-80 border-r border-gray-200 dark:border-gray-700 flex flex-col">
+      <div className={`${activeChat ? 'hidden md:flex' : 'flex'} w-full md:w-80 border-r border-gray-200 dark:border-gray-700 flex-col flex-shrink-0`}>
         {/* Tabs */}
         <div className="flex border-b border-gray-100 dark:border-gray-700">
           <button
@@ -102,7 +140,7 @@ export default function ChatPage() {
 
         <div className="flex-1 overflow-y-auto">
           {!showContacts ? (
-            // Conversations
+            // Conversations grouped by subject
             conversations.length === 0 ? (
               <div className="text-center py-8 px-4">
                 <MessageCircle className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-2" />
@@ -112,79 +150,126 @@ export default function ChatPage() {
                 </button>
               </div>
             ) : (
-              conversations.map((conv) => (
-                <button
-                  key={conv.user.id}
-                  onClick={() => setActiveChat(conv.user.id)}
-                  className={`w-full p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left ${
-                    activeChat === conv.user.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''
-                  }`}
-                >
-                  <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-bold text-primary-700 dark:text-primary-400">
-                      {conv.user.firstName.charAt(0)}{conv.user.lastName.charAt(0)}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                        {conv.user.firstName} {conv.user.lastName}
-                      </p>
-                      {conv.unreadCount > 0 && (
-                        <span className="w-5 h-5 bg-primary-600 rounded-full text-white text-[10px] flex items-center justify-center">
-                          {conv.unreadCount}
+              Object.entries(groupedConversations).map(([groupId, group]) => {
+                const collapsed = collapsedSubjects[`conv-${groupId}`];
+                const unread = group.items.reduce((acc: number, c: any) => acc + (c.unreadCount || 0), 0);
+                return (
+                  <div key={groupId}>
+                    <button
+                      onClick={() => toggleSubject(`conv-${groupId}`)}
+                      className="w-full px-4 py-2 flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      {collapsed ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                      <BookOpen className="w-3.5 h-3.5 text-primary-500" />
+                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide truncate flex-1 text-left">
+                        {group.name}
+                      </span>
+                      {unread > 0 && (
+                        <span className="min-w-[18px] h-[18px] px-1 bg-primary-600 rounded-full text-white text-[10px] flex items-center justify-center font-bold">
+                          {unread}
                         </span>
                       )}
-                    </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{conv.lastMessage?.content}</p>
+                    </button>
+                    {!collapsed && group.items.map((conv: any) => (
+                      <button
+                        key={conv.user.id}
+                        onClick={() => setActiveChat(conv.user.id)}
+                        className={`w-full p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left ${
+                          activeChat === conv.user.id ? 'bg-primary-50 dark:bg-primary-900/20' : ''
+                        }`}
+                      >
+                        <div className="w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-bold text-primary-700 dark:text-primary-400">
+                            {conv.user.firstName.charAt(0)}{conv.user.lastName.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                              {conv.user.firstName} {conv.user.lastName}
+                            </p>
+                            {conv.unreadCount > 0 && (
+                              <span className="w-5 h-5 bg-primary-600 rounded-full text-white text-[10px] flex items-center justify-center flex-shrink-0">
+                                {conv.unreadCount}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{conv.lastMessage?.content}</p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                </button>
-              ))
+                );
+              })
             )
           ) : (
-            // Contacts
-            contacts.length === 0 ? (
+            // Contacts grouped by subject
+            subjectGroups.length === 0 ? (
               <p className="text-center text-gray-400 dark:text-gray-500 py-8 text-sm">No hay contactos</p>
             ) : (
-              contacts.map((contact: any) => (
-                <button
-                  key={contact.id}
-                  onClick={() => startChat(contact.id)}
-                  className="w-full p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
-                >
-                  <div className="w-10 h-10 bg-accent-100 dark:bg-accent-900 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-sm font-bold text-accent-700 dark:text-accent-400">
-                      {contact.firstName.charAt(0)}{contact.lastName.charAt(0)}
-                    </span>
+              subjectGroups.map((group) => {
+                const collapsed = collapsedSubjects[`cont-${group.id}`];
+                return (
+                  <div key={group.id}>
+                    <button
+                      onClick={() => toggleSubject(`cont-${group.id}`)}
+                      className="w-full px-4 py-2 flex items-center gap-2 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      {collapsed ? <ChevronRight className="w-3.5 h-3.5 text-gray-400" /> : <ChevronDown className="w-3.5 h-3.5 text-gray-400" />}
+                      <BookOpen className="w-3.5 h-3.5 text-accent-500" />
+                      <span className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide truncate flex-1 text-left">
+                        {group.name}
+                      </span>
+                      <span className="text-[10px] text-gray-400">{group.members.length}</span>
+                    </button>
+                    {!collapsed && group.members.map((contact: any) => (
+                      <button
+                        key={`${group.id}-${contact.id}`}
+                        onClick={() => startChat(contact.id)}
+                        className="w-full p-4 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-left"
+                      >
+                        <div className="w-10 h-10 bg-accent-100 dark:bg-accent-900 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-sm font-bold text-accent-700 dark:text-accent-400">
+                            {contact.firstName.charAt(0)}{contact.lastName.charAt(0)}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                            {contact.firstName} {contact.lastName}
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            {contact.role === 'TEACHER' ? 'Profesor' : 'Estudiante'}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
-                      {contact.firstName} {contact.lastName}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">
-                      {contact.role === 'TEACHER' ? 'Profesor' : 'Estudiante'}
-                      {contact.subjectName ? ` - ${contact.subjectName}` : ''}
-                    </p>
-                  </div>
-                </button>
-              ))
+                );
+              })
             )
           )}
         </div>
       </div>
 
       {/* Chat window */}
-      <div className="flex-1 flex flex-col">
+      <div className={`${activeChat ? 'flex' : 'hidden md:flex'} flex-1 flex-col min-w-0`}>
         {activeChat && activeChatUser ? (
           <>
             <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex items-center gap-3">
-              <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
+              <button
+                onClick={() => setActiveChat(null)}
+                className="md:hidden text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 flex-shrink-0"
+                aria-label="Volver"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="w-8 h-8 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-xs font-bold text-primary-700 dark:text-primary-400">
                   {activeChatUser.firstName.charAt(0)}{activeChatUser.lastName.charAt(0)}
                 </span>
               </div>
-              <div>
-                <p className="font-medium text-gray-800 dark:text-gray-200">{activeChatUser.firstName} {activeChatUser.lastName}</p>
+              <div className="min-w-0">
+                <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{activeChatUser.firstName} {activeChatUser.lastName}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{activeChatUser.role === 'TEACHER' ? 'Profesor' : 'Estudiante'}</p>
               </div>
             </div>
@@ -197,7 +282,7 @@ export default function ChatPage() {
               )}
               {messages.map((msg) => (
                 <div key={msg.id} className={`flex ${msg.senderId === user?.id ? 'justify-end' : 'justify-start'}`}>
-                  <div className={`max-w-[70%] px-4 py-2 rounded-2xl ${
+                  <div className={`max-w-[85%] sm:max-w-[70%] px-4 py-2 rounded-2xl break-words ${
                     msg.senderId === user?.id
                       ? 'bg-primary-600 text-white rounded-br-md'
                       : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200 rounded-bl-md'

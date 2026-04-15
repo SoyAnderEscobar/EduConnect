@@ -135,7 +135,7 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
           {showPanel && (
             <div
               ref={panelRef}
-              className="absolute right-0 top-12 w-96 max-h-[70vh] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 flex flex-col overflow-hidden"
+              className="absolute right-0 top-12 w-[calc(100vw-2rem)] sm:w-96 max-w-sm max-h-[70vh] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 flex flex-col overflow-hidden"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
@@ -147,7 +147,8 @@ export default function Navbar({ onMenuClick }: NavbarProps) {
                       className="text-xs text-primary-600 dark:text-primary-400 hover:text-primary-700 font-medium flex items-center gap-1"
                     >
                       <CheckCheck className="w-3.5 h-3.5" />
-                      Marcar todas como leidas
+                      <span className="hidden sm:inline">Marcar todas como leidas</span>
+                      <span className="sm:hidden">Marcar todas</span>
                     </button>
                   )}
                   <button
