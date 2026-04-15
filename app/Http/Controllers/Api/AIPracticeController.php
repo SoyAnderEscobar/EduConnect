@@ -15,9 +15,9 @@ class AIPracticeController extends Controller
 {
     private $models = [
         'gemini-2.5-flash',
+        'gemini-2.5-flash-lite',
         'gemini-2.0-flash',
         'gemini-2.0-flash-lite',
-        'gemini-1.5-flash-latest',
     ];
 
     private function callGemini(string $prompt, int $maxTokens = 1024): ?string
